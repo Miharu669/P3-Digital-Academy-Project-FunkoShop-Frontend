@@ -2,8 +2,12 @@
 import { reactive, ref, computed, onMounted } from 'vue'
 import { useCartStore } from '@/stores/cart/cartStore'
 import { loadStripe } from '@stripe/stripe-js'
+import { useAuthStore } from '@/stores/auth';
+import { ProfileStore } from '@/stores/Profile/ProfileStore';
 
 const cartStore = useCartStore()
+const store = ProfileStore();
+const auth = useAuthStore();
 
 const stripePublicKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY
 const apiEndpoint = import.meta.env.VITE_API_ENDPOINT
@@ -17,6 +21,7 @@ const cartProducts = computed(() => cartStore.products)
 const totalPrice = computed(() => cartStore.totalPrice)
 
 const shippingCost = ref(5.0)
+
 const discount = ref(0.0)
 
 const totalPayable = computed(() => totalPrice.value + shippingCost.value - discount.value)
@@ -34,6 +39,25 @@ const billingDetails = reactive({
   additionalInfo: '',
   differentAddress: false
 })
+
+async function getProfile() {
+  const response = await store.getProfile(auth.user.access_token);
+
+  if (response.phoneNumber) {
+    const splitPhoneNumber = response.phoneNumber.split('-');
+    billingDetails.phone = splitPhoneNumber[1];
+  }
+  
+  billingDetails.firstName = response.firstName || '';
+  billingDetails.lastName = response.lastName || '';
+  billingDetails.address = response.street || '';
+  billingDetails.city = response.city || '';
+  billingDetails.country = response.country || '';
+  billingDetails.postcode = response.postalCode || '';
+  billingDetails.email = response.email || '';
+}
+
+getProfile();
 
 const selectedPaymentMethod = ref('cod')
 
@@ -89,6 +113,12 @@ const handlePayment = async () => {
     try {
       const amount = Math.round(totalPayable.value * 100)
 
+      const products = cartProducts.value.map(product => ({
+        id: product.id,
+        name: product.name,
+        quantity: product.quantity,
+        price: product.price
+      }))
       const response = await fetch(`${apiEndpoint}/payments/create-payment-intent`, {
         method: 'POST',
         headers: {
@@ -96,7 +126,8 @@ const handlePayment = async () => {
         },
         body: JSON.stringify({
           amount: amount,
-          currency: 'eur'
+          currency: 'eur',
+          products: products,
         })
       })
 

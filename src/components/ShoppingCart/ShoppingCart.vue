@@ -1,13 +1,20 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue'
 import { XMarkIcon, ShoppingBagIcon } from '@heroicons/vue/24/outline'
 import { useCartStore } from '@/stores/cart/cartStore'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
+import LoginModal from '@/components/auth/LoginModal.vue';
 
-const open = ref(false)
+const open = ref(false);
+const openLogin = ref(false);
+const attemptedCheckout = ref(false);
 
-const cartStore = useCartStore()
+const cartStore = useCartStore();
+const authStore = useAuthStore();
+const router = useRouter();
 
 const { t } = useI18n()
 
@@ -29,6 +36,37 @@ const removeFromCart = (id) => {
     cartStore.removeProduct(id)
   }
 }
+
+
+const checkout = () => {
+  if (authStore.user.isAuthenticated) {
+    open.value = false;
+    router.push('/checkout');
+  } else {
+    attemptedCheckout.value = true;
+    open.value = false;
+    openLogin.value = true;
+  }
+};
+
+const handleLoginSuccess = () => {
+  openLogin.value = false;
+  
+  if (attemptedCheckout.value) {
+    attemptedCheckout.value = false;
+    router.push('/checkout');
+  }
+};
+
+watch(
+  () => authStore.user.isAuthenticated,  
+  (isAuthenticated) => {
+    if (isAuthenticated && attemptedCheckout.value) {
+      attemptedCheckout.value = false; 
+      router.push('/checkout');         
+    }
+  }
+);
 </script>
 
 <template>
@@ -144,8 +182,10 @@ const removeFromCart = (id) => {
                       {{ t('shoppingCart.shipping') }}
                     </p>
                     <div class="mt-6">
-                      <a href="/checkout"
-                        class="flex items-center justify-center rounded-md border border-transparent bg-blueFunko-700 px-6 py-3 text-base font-medium text-white shadow-sm hover:bg-blueFunko-800">Checkout</a>
+                      <button @click="checkout"
+                        class="w-full bg-blueFunko-700 text-white py-3 rounded-md hover:bg-blueFunko-800 transition">
+                        Go to Checkout
+                      </button>
                     </div>
                     <div class="mt-6 flex justify-center text-center text-sm text-gray-500">
                       <p>
@@ -169,4 +209,38 @@ const removeFromCart = (id) => {
       </div>
     </Dialog>
   </TransitionRoot>
+  <div v-if="!authStore.user.isAuthenticated" class="relative">
+    <TransitionRoot as="template" :show="openLogin">
+      <Dialog class="relative z-10" @close="openLogin = false">
+        <TransitionChild
+          as="template"
+          enter="ease-out duration-300"
+          enter-from="opacity-0"
+          enter-to="opacity-100"
+          leave="ease-in duration-200"
+          leave-from="opacity-100"
+          leave-to="opacity-0"
+        >
+          <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
+        </TransitionChild>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+          <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+            <TransitionChild
+              as="template"
+              enter="ease-out duration-300"
+              enter-from="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+              enter-to="opacity-100 translate-y-0 sm:scale-100"
+              leave="ease-in duration-200"
+              leave-from="opacity-100 translate-y-0 sm:scale-100"
+              leave-to="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            >
+              <DialogPanel class="shadow-xl transition-all w-full max-w-md rounded-2xl">
+                <LoginModal @close="openLogin = false" @login-success="handleLoginSuccess" />
+              </DialogPanel>
+            </TransitionChild>
+          </div>
+        </div>
+      </Dialog>
+    </TransitionRoot>
+  </div>
 </template>
